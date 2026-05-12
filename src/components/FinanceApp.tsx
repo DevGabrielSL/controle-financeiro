@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -52,6 +52,17 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]["id"];
 
+function isCloudDatasetEmpty(cloud: FinanceState) {
+  return (
+    cloud.accounts.length === 0 &&
+    cloud.categories.length === 0 &&
+    cloud.transactions.length === 0 &&
+    cloud.recurringItems.length === 0 &&
+    cloud.installmentPlans.length === 0 &&
+    cloud.loans.length === 0
+  );
+}
+
 export function FinanceApp({ userEmail }: { userEmail?: string }) {
   const [state, setState] = useState<FinanceState>(() => {
     if (typeof window === "undefined") {
@@ -63,7 +74,77 @@ export function FinanceApp({ userEmail }: { userEmail?: string }) {
   });
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const [month, setMonth] = useState(currentMonth());
-  const [syncStatus, setSyncStatus] = useState("Dados locais prontos.");
+  const [syncStatus, setSyncStatus] = useState(
+    userEmail ? "Conectando à nuvem..." : "Pronto.",
+  );
+  const cloudReadyRef = useRef(false);
+  const skipCloudSaveRef = useRef(false);
+
+  useEffect(() => {
+    if (!userEmail) {
+      cloudReadyRef.current = false;
+      return;
+    }
+
+    let cancelled = false;
+    cloudReadyRef.current = false;
+
+    (async () => {
+      try {
+        setSyncStatus("Carregando seus dados na nuvem...");
+        const cloudState = await loadCloudFinanceState();
+        if (cancelled) {
+          return;
+        }
+        if (!cloudState) {
+          cloudReadyRef.current = false;
+          setSyncStatus("Não foi possível carregar a nuvem. Verifique o login.");
+          return;
+        }
+
+        let next = cloudState;
+        if (isCloudDatasetEmpty(next)) {
+          next = structuredClone(defaultFinanceState);
+        }
+
+        skipCloudSaveRef.current = true;
+        cloudReadyRef.current = true;
+        setState(next);
+        setSyncStatus("Sincronizado com a sua conta.");
+      } catch (error) {
+        if (!cancelled) {
+          cloudReadyRef.current = false;
+          setSyncStatus(error instanceof Error ? error.message : "Erro ao carregar da nuvem.");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userEmail]);
+
+  useEffect(() => {
+    if (!userEmail || !cloudReadyRef.current) {
+      return;
+    }
+    if (skipCloudSaveRef.current) {
+      skipCloudSaveRef.current = false;
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setSyncStatus("Salvando na nuvem...");
+        await saveCloudFinanceState(state);
+        setSyncStatus("Salvo na nuvem.");
+      } catch (error) {
+        setSyncStatus(error instanceof Error ? error.message : "Erro ao salvar na nuvem.");
+      }
+    }, 1200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [state, userEmail]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -101,31 +182,6 @@ export function FinanceApp({ userEmail }: { userEmail?: string }) {
       ...state,
       transactions: state.transactions.filter((transaction) => transaction.id !== transactionId),
     });
-  }
-
-  async function loadFromCloud() {
-    try {
-      setSyncStatus("Carregando da nuvem...");
-      const cloudState = await loadCloudFinanceState();
-      if (!cloudState) {
-        setSyncStatus("Faça login e configure o Supabase para carregar da nuvem.");
-        return;
-      }
-      setState(cloudState);
-      setSyncStatus("Dados carregados da nuvem.");
-    } catch (error) {
-      setSyncStatus(error instanceof Error ? error.message : "Erro ao carregar da nuvem.");
-    }
-  }
-
-  async function saveToCloud() {
-    try {
-      setSyncStatus("Salvando na nuvem...");
-      await saveCloudFinanceState(state);
-      setSyncStatus("Dados salvos na nuvem.");
-    } catch (error) {
-      setSyncStatus(error instanceof Error ? error.message : "Erro ao salvar na nuvem.");
-    }
   }
 
   return (
@@ -181,23 +237,11 @@ export function FinanceApp({ userEmail }: { userEmail?: string }) {
                 value={month}
                 onChange={(event) => setMonth(event.target.value)}
               />
-              <button
-                className="rounded-2xl border border-white/15 px-4 py-3 font-semibold text-white"
-                type="button"
-                onClick={loadFromCloud}
-              >
-                Carregar nuvem
-              </button>
-              <button
-                className="rounded-2xl border border-white/15 px-4 py-3 font-semibold text-white"
-                type="button"
-                onClick={saveToCloud}
-              >
-                Salvar nuvem
-              </button>
             </div>
           </div>
-          <p className="mt-3 text-sm text-slate-400">{syncStatus}</p>
+          <p className="mt-3 text-sm text-slate-400">
+            {userEmail ? syncStatus : "Dados só neste aparelho."}
+          </p>
 
           <div className="mt-4 flex gap-2 overflow-x-auto lg:hidden">
             {tabs.map((tab) => (
