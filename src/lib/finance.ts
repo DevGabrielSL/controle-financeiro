@@ -1,4 +1,5 @@
 import {
+  Account,
   FinanceState,
   InstallmentPlan,
   Loan,
@@ -49,6 +50,14 @@ export function ensureCreditCardAccounts(state: FinanceState): FinanceState {
     ...state,
     accounts: [...state.accounts, ...defaultCreditCardAccounts.map((account) => ({ ...account }))],
   };
+}
+
+export function resolveMainAccountId(accounts: Account[]): string | null {
+  const account =
+    accounts.find((item) => item.name === "Conta principal") ??
+    accounts.find((item) => item.kind === "checking") ??
+    accounts[0];
+  return account?.id ?? null;
 }
 
 export function createId(prefix: string) {

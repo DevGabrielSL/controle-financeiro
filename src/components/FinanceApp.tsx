@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -32,6 +32,7 @@ import {
   ensureCreditCardAccounts,
   generateRecurringForMonths,
   getTransactionsForMonth,
+  resolveMainAccountId,
   summarizeTransactions,
 } from "@/lib/finance";
 import { FinanceState, TransactionType, CardPaymentType } from "@/lib/types";
@@ -308,6 +309,8 @@ export function FinanceApp({ userEmail }: { userEmail?: string }) {
             <Dashboard
               annualSummary={annualSummary}
               cardSpendByCard={cardSpendByCard}
+              categories={state.categories}
+              recurringItems={state.recurringItems}
               transactions={monthlyTransactions}
               onDeleteTransaction={deleteTransaction}
             />
@@ -367,14 +370,98 @@ function SummaryCards({
   );
 }
 
+function RecurringDashboardSection({
+  categories,
+  recurringItems,
+}: {
+  categories: FinanceState["categories"];
+  recurringItems: FinanceState["recurringItems"];
+}) {
+  const active = recurringItems.filter((item) => item.active);
+  const incomeItems = active.filter((item) => item.type === "income");
+  const expenseItems = active.filter((item) => item.type === "expense");
+  const totalIncome = incomeItems.reduce((sum, item) => sum + item.amount, 0);
+  const totalExpense = expenseItems.reduce((sum, item) => sum + item.amount, 0);
+
+  function categoryName(categoryId: string) {
+    return categories.find((category) => category.id === categoryId)?.name ?? "—";
+  }
+
+  function column(
+    title: string,
+    subtitle: string,
+    items: typeof incomeItems,
+    total: number,
+    accent: "emerald" | "rose",
+  ) {
+    return (
+      <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className={`text-lg font-bold ${accent === "emerald" ? "text-emerald-200" : "text-rose-200"}`}>
+              {title}
+            </h3>
+            <p className="mt-1 text-sm text-slate-400">{subtitle}</p>
+          </div>
+          <Repeat className={accent === "emerald" ? "text-emerald-400" : "text-rose-400"} size={22} />
+        </div>
+        <p className={`mt-4 text-2xl font-bold ${accent === "emerald" ? "text-emerald-300" : "text-rose-300"}`}>
+          {formatCurrency(total)}
+          <span className="ml-2 text-sm font-normal text-slate-400">/ mês</span>
+        </p>
+        <ul className="mt-4 space-y-2 border-t border-white/10 pt-4">
+          {items.length === 0 ? (
+            <li className="text-sm text-slate-500">Nenhum cadastrado.</li>
+          ) : (
+            items.map((item) => (
+              <li
+                key={item.id}
+                className="flex items-center justify-between gap-2 rounded-xl bg-slate-950/50 px-3 py-2 text-sm"
+              >
+                <span className="min-w-0 flex-1 truncate text-slate-200">
+                  <span className="font-medium">{item.description}</span>
+                  <span className="text-slate-500"> · dia {item.dayOfMonth}</span>
+                  <span className="block truncate text-xs text-slate-500">{categoryName(item.categoryId)}</span>
+                </span>
+                <span className="shrink-0 font-semibold text-white">{formatCurrency(item.amount)}</span>
+              </li>
+            ))
+          )}
+        </ul>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-xl font-bold text-white">Fixos no planejamento</h3>
+          <p className="mt-1 text-sm text-slate-400">
+            Entradas e saídas recorrentes ativas (valores mensais). O tipo (Entrada / Saída) define cada fixo.
+          </p>
+        </div>
+      </div>
+      <div className="mt-6 grid gap-6 md:grid-cols-2">
+        {column("Fixos de entrada", "Salário e outras receitas fixas", incomeItems, totalIncome, "emerald")}
+        {column("Fixos de saída", "Contas e despesas fixas mensais", expenseItems, totalExpense, "rose")}
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({
   annualSummary,
   cardSpendByCard,
+  categories,
+  recurringItems,
   onDeleteTransaction,
   transactions,
 }: {
   annualSummary: ReturnType<typeof buildAnnualSummary>;
   cardSpendByCard: { id: string; name: string; total: number }[];
+  categories: FinanceState["categories"];
+  recurringItems: FinanceState["recurringItems"];
   onDeleteTransaction: (transactionId: string) => void;
   transactions: FinanceState["transactions"];
 }) {
@@ -402,6 +489,8 @@ function Dashboard({
 
   return (
     <div className="space-y-6">
+      <RecurringDashboardSection categories={categories} recurringItems={recurringItems} />
+
       <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
         <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-6">
           <h3 className="text-xl font-bold">Resumo anual</h3>
@@ -494,12 +583,8 @@ function TransactionsPanel({
     const form = new FormData(event.currentTarget);
     const type = form.get("type") as TransactionType;
 
-    const mainAccount =
-      state.accounts.find((account) => account.name === "Conta principal") ??
-      state.accounts.find((account) => account.kind === "checking") ??
-      state.accounts[0];
-
-    if (!mainAccount) {
+    const mainAccountId = resolveMainAccountId(state.accounts);
+    if (!mainAccountId) {
       window.alert("Não há conta para vincular o lançamento. Cadastre uma conta corrente em Manutenção.");
       return;
     }
@@ -515,7 +600,7 @@ function TransactionsPanel({
           date: String(form.get("date")),
           status: "paid",
           categoryId: String(form.get("categoryId")),
-          accountId: mainAccount.id,
+          accountId: mainAccountId,
         },
         ...state.transactions,
       ],
@@ -805,9 +890,17 @@ function RecurringPanel({
   state: FinanceState;
   setState: (state: FinanceState) => void;
 }) {
+  const [recurringType, setRecurringType] = useState<TransactionType>("income");
+
   function addRecurring(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const accountId = resolveMainAccountId(state.accounts);
+    if (!accountId) {
+      window.alert("Não há conta principal para vincular os fixos.");
+      return;
+    }
+
     const recurringItem = {
       id: createId("rec"),
       description: String(form.get("description")),
@@ -815,7 +908,7 @@ function RecurringPanel({
       amount: Number(form.get("amount")),
       dayOfMonth: Number(form.get("dayOfMonth")),
       categoryId: String(form.get("categoryId")),
-      accountId: String(form.get("accountId")),
+      accountId,
       active: true,
     };
     const stateWithRecurring = {
@@ -842,23 +935,34 @@ function RecurringPanel({
   return (
     <Panel
       title="Fixos"
-      description="Cadastre aluguel, internet, salário e qualquer item que se repete todo mês."
+      description="Defina se é fixo de entrada ou de saída (Tipo). Lançamentos gerados usam a conta principal."
       icon={<Repeat />}
     >
       <FinanceForm onSubmit={addRecurring}>
-        <Select name="type" label="Tipo" options={[["income", "Entrada"], ["expense", "Saída"]]} />
+        <Select
+          name="type"
+          label="Tipo"
+          options={[
+            ["income", "Entrada (fixo)"],
+            ["expense", "Saída (fixo)"],
+          ]}
+          value={recurringType}
+          onValueChange={(value) => setRecurringType(value as TransactionType)}
+        />
         <Input name="description" label="Descrição" required />
         <Input name="amount" label="Valor mensal" type="number" step="0.01" min="0" required />
         <Input name="dayOfMonth" label="Dia do mês" type="number" min="1" max="28" required />
-        <CategorySelect state={state} />
-        <AccountSelect state={state} />
+        <CategorySelect key={recurringType} state={state} type={recurringType} />
         <SubmitButton>Adicionar fixo</SubmitButton>
       </FinanceForm>
       <SimpleList
         items={state.recurringItems.map((item) => ({
           id: item.id,
           title: item.description,
-          subtitle: `${item.type === "income" ? "Entrada" : "Saída"} todo dia ${item.dayOfMonth}`,
+          subtitle:
+            item.type === "income"
+              ? `Fixo de entrada · dia ${item.dayOfMonth}`
+              : `Fixo de saída · dia ${item.dayOfMonth}`,
           value: formatCurrency(item.amount),
           onDelete: deleteRecurring,
         }))}
@@ -1082,21 +1186,32 @@ function Input(props: React.InputHTMLAttributes<HTMLInputElement> & { label: str
 function Select({
   label,
   name,
+  onValueChange,
   options,
+  value,
 }: {
   label: string;
   name: string;
   options: [string, string][];
+  value?: string;
+  onValueChange?: (value: string) => void;
 }) {
+  const controlled = value !== undefined;
   return (
     <label className="block">
       <span className="text-sm font-medium text-slate-300">{label}</span>
       <select
         className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-emerald-400"
         name={name}
+        {...(controlled
+          ? {
+              value,
+              onChange: (event: ChangeEvent<HTMLSelectElement>) => onValueChange?.(event.target.value),
+            }
+          : {})}
       >
-        {options.map(([value, text]) => (
-          <option key={value} value={value}>
+        {options.map(([optionValue, text]) => (
+          <option key={optionValue} value={optionValue}>
             {text}
           </option>
         ))}
