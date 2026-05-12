@@ -1,5 +1,6 @@
 export type TransactionType = "income" | "expense";
 export type TransactionStatus = "paid" | "pending";
+export type CardPaymentType = "credit" | "debit";
 export type AccountKind = "checking" | "savings" | "cash" | "credit_card";
 export type LoanDirection = "borrowed" | "lent";
 
@@ -27,6 +28,8 @@ export type Transaction = {
   status: TransactionStatus;
   categoryId: string;
   accountId: string;
+  /** Presente em lançamentos feitos na aba Cartões (crédito x débito no cartão). */
+  cardPaymentType?: CardPaymentType;
   notes?: string;
   sourceId?: string;
   sourceType?: "recurring" | "installment" | "loan";

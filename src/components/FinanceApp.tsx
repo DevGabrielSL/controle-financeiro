@@ -32,7 +32,7 @@ import {
   getTransactionsForMonth,
   summarizeTransactions,
 } from "@/lib/finance";
-import { FinanceState, TransactionStatus, TransactionType } from "@/lib/types";
+import { FinanceState, TransactionStatus, TransactionType, CardPaymentType } from "@/lib/types";
 import { cn, currentMonth, formatCurrency, formatMonth, toDateInput } from "@/lib/utils";
 import {
   loadCloudFinanceState,
@@ -44,6 +44,7 @@ const storageKey = "controle-financeiro-state";
 const tabs = [
   { id: "dashboard", label: "Dashboard" },
   { id: "transactions", label: "Entradas e saídas" },
+  { id: "cards", label: "Cartões" },
   { id: "recurring", label: "Fixos" },
   { id: "installments", label: "Parcelas" },
   { id: "loans", label: "Empréstimos" },
@@ -233,6 +234,9 @@ export function FinanceApp({ userEmail }: { userEmail?: string }) {
           {activeTab === "transactions" ? (
             <TransactionsPanel state={state} setState={updateState} />
           ) : null}
+          {activeTab === "cards" ? (
+            <CardsPanel month={month} state={state} setState={updateState} />
+          ) : null}
           {activeTab === "recurring" ? (
             <RecurringPanel state={state} setState={updateState} />
           ) : null}
@@ -389,6 +393,146 @@ function TransactionsPanel({
         <SubmitButton>Adicionar lançamento</SubmitButton>
       </FinanceForm>
       <TransactionList transactions={state.transactions} onDelete={deleteTransaction} />
+    </Panel>
+  );
+}
+
+function CardsPanel({
+  month,
+  state,
+  setState,
+}: {
+  month: string;
+  state: FinanceState;
+  setState: (state: FinanceState) => void;
+}) {
+  const creditCards = useMemo(
+    () => state.accounts.filter((account) => account.kind === "credit_card"),
+    [state.accounts],
+  );
+  const cardAccountIds = useMemo(() => new Set(creditCards.map((c) => c.id)), [creditCards]);
+
+  const [cardFilter, setCardFilter] = useState<string>("all");
+
+  const cardMonthTransactions = useMemo(() => {
+    let list = getTransactionsForMonth(state.transactions, month).filter((transaction) =>
+      cardAccountIds.has(transaction.accountId),
+    );
+    if (cardFilter !== "all") {
+      list = list.filter((transaction) => transaction.accountId === cardFilter);
+    }
+    return list;
+  }, [cardAccountIds, cardFilter, month, state.transactions]);
+
+  function addCardTransaction(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const accountId = String(form.get("accountId"));
+    const account = state.accounts.find((item) => item.id === accountId);
+
+    if (!account || account.kind !== "credit_card") {
+      window.alert("Selecione um cartão de crédito válido.");
+      return;
+    }
+
+    const cardPaymentType = form.get("cardPaymentType") as CardPaymentType;
+    if (cardPaymentType !== "credit" && cardPaymentType !== "debit") {
+      window.alert("Informe se foi crédito ou débito.");
+      return;
+    }
+
+    const type = form.get("type") as TransactionType;
+
+    setState({
+      ...state,
+      transactions: [
+        {
+          id: createId("txn"),
+          description: String(form.get("description")),
+          type,
+          amount: Number(form.get("amount")),
+          date: String(form.get("date")),
+          status: form.get("status") as TransactionStatus,
+          categoryId: String(form.get("categoryId")),
+          accountId,
+          cardPaymentType,
+        },
+        ...state.transactions,
+      ],
+    });
+    event.currentTarget.reset();
+  }
+
+  function deleteTransaction(transactionId: string) {
+    if (!window.confirm("Remover este lançamento?")) {
+      return;
+    }
+
+    setState({
+      ...state,
+      transactions: state.transactions.filter((transaction) => transaction.id !== transactionId),
+    });
+  }
+
+  if (creditCards.length === 0) {
+    return (
+      <Panel
+        title="Cartões"
+        description="Cadastre uma conta do tipo cartão de crédito nas suas contas para usar esta tela."
+        icon={<CreditCard />}
+      >
+        <EmptyState text="Nenhuma conta de cartão cadastrada. Por enquanto o app traz um cartão de exemplo; restaure os dados ou adicione contas no futuro pelo banco ou por uma tela de contas." />
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel
+      title="Cartões"
+      description="Lançamentos em cartão: informe se foi no crédito ou no débito e qual cartão. A lista segue o mês selecionado no topo."
+      icon={<CreditCard />}
+    >
+      <FinanceForm onSubmit={addCardTransaction}>
+        <Select
+          name="cardPaymentType"
+          label="Crédito ou débito"
+          options={[
+            ["credit", "Crédito"],
+            ["debit", "Débito"],
+          ]}
+        />
+        <CardAccountSelect accounts={creditCards} />
+        <Select name="type" label="Tipo" options={[["expense", "Saída"], ["income", "Entrada"]]} />
+        <Input name="description" label="Descrição" required />
+        <Input name="amount" label="Valor" type="number" step="0.01" min="0" required />
+        <Input name="date" label="Data" type="date" defaultValue={toDateInput()} required />
+        <Select name="status" label="Status" options={[["paid", "Pago"], ["pending", "Pendente"]]} />
+        <CategorySelect state={state} />
+        <SubmitButton>Adicionar no cartão</SubmitButton>
+      </FinanceForm>
+      <div className="flex flex-col gap-4">
+        <label className="block">
+          <span className="text-sm font-medium text-slate-300">Filtrar por cartão</span>
+          <select
+            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-emerald-400"
+            value={cardFilter}
+            onChange={(event) => setCardFilter(event.target.value)}
+          >
+            <option value="all">Todos os cartões</option>
+            {creditCards.map((card) => (
+              <option key={card.id} value={card.id}>
+                {card.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <TransactionList
+          accounts={state.accounts}
+          onDelete={deleteTransaction}
+          showCardMeta
+          transactions={cardMonthTransactions}
+        />
+      </div>
     </Panel>
   );
 }
@@ -701,6 +845,10 @@ function AccountSelect({ state }: { state: FinanceState }) {
   return <Select name="accountId" label="Conta" options={state.accounts.map((a) => [a.id, a.name])} />;
 }
 
+function CardAccountSelect({ accounts }: { accounts: FinanceState["accounts"] }) {
+  return <Select name="accountId" label="Cartão" options={accounts.map((account) => [account.id, account.name])} />;
+}
+
 function SubmitButton({ children }: { children: React.ReactNode }) {
   return (
     <button className="rounded-2xl bg-emerald-400 px-5 py-3 font-bold text-slate-950" type="submit">
@@ -710,10 +858,14 @@ function SubmitButton({ children }: { children: React.ReactNode }) {
 }
 
 function TransactionList({
+  accounts,
   onDelete,
+  showCardMeta = false,
   transactions,
 }: {
+  accounts?: FinanceState["accounts"];
   onDelete?: (transactionId: string) => void;
+  showCardMeta?: boolean;
   transactions: FinanceState["transactions"];
 }) {
   if (transactions.length === 0) {
@@ -722,7 +874,20 @@ function TransactionList({
 
   return (
     <div className="space-y-3">
-      {transactions.map((transaction) => (
+      {transactions.map((transaction) => {
+        const account = accounts?.find((item) => item.id === transaction.accountId);
+        const cardMeta =
+          showCardMeta && account
+            ? `${account.name}${
+                transaction.cardPaymentType
+                  ? transaction.cardPaymentType === "credit"
+                    ? " · Crédito"
+                    : " · Débito"
+                  : ""
+              }`
+            : null;
+
+        return (
         <div key={transaction.id} className="rounded-2xl bg-slate-950/70 p-4">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -731,6 +896,7 @@ function TransactionList({
                 {new Date(`${transaction.date}T00:00:00`).toLocaleDateString("pt-BR")} -{" "}
                 {transaction.status === "paid" ? "Pago" : "Pendente"}
               </p>
+              {cardMeta ? <p className="mt-1 text-xs text-slate-500">{cardMeta}</p> : null}
             </div>
             <p
               className={cn(
@@ -753,7 +919,8 @@ function TransactionList({
             </button>
           ) : null}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

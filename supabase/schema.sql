@@ -37,6 +37,7 @@ create table if not exists public.transactions (
   due_date date,
   status text not null default 'pending' check (status in ('paid', 'pending')),
   notes text,
+  card_payment_type text check (card_payment_type is null or card_payment_type in ('credit', 'debit')),
   source_id text,
   source_type text check (source_type in ('recurring', 'installment', 'loan')),
   created_at timestamptz not null default now()
