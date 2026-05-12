@@ -76,6 +76,30 @@ function isCloudDatasetEmpty(cloud: FinanceState) {
   );
 }
 
+/** Indica se o estado local parece ter dados do usuário (não só o template inicial vazio). */
+function localLooksUserOwned(local: FinanceState) {
+  if (
+    local.transactions.length > 0 ||
+    local.recurringItems.length > 0 ||
+    local.installmentPlans.length > 0 ||
+    local.loans.length > 0
+  ) {
+    return true;
+  }
+  const seedAccountIds = new Set(defaultFinanceState.accounts.map((account) => account.id));
+  if (local.accounts.some((account) => !seedAccountIds.has(account.id))) {
+    return true;
+  }
+  if (local.categories.length !== defaultFinanceState.categories.length) {
+    return true;
+  }
+  const seedCategoryIds = new Set(defaultFinanceState.categories.map((category) => category.id));
+  if (local.categories.some((category) => !seedCategoryIds.has(category.id))) {
+    return true;
+  }
+  return false;
+}
+
 export function FinanceApp({ userEmail }: { userEmail?: string }) {
   const [state, setState] = useState<FinanceState>(() => {
     if (typeof window === "undefined") {
@@ -119,16 +143,36 @@ export function FinanceApp({ userEmail }: { userEmail?: string }) {
         }
 
         let next = cloudState;
-        if (isCloudDatasetEmpty(next)) {
-          next = structuredClone(defaultFinanceState);
-        } else {
-          next = ensureCreditCardAccounts(next);
+        const savedRaw = typeof window !== "undefined" ? localStorage.getItem(storageKey) : null;
+        let localSnapshot: FinanceState | null = null;
+        if (savedRaw) {
+          try {
+            localSnapshot = JSON.parse(savedRaw) as FinanceState;
+          } catch {
+            localSnapshot = null;
+          }
         }
 
-        skipCloudSaveRef.current = true;
+        let syncMessage = "Sincronizado com a sua conta.";
+
+        if (isCloudDatasetEmpty(next)) {
+          if (localSnapshot && localLooksUserOwned(localSnapshot)) {
+            next = ensureCreditCardAccounts(localSnapshot);
+            skipCloudSaveRef.current = false;
+            syncMessage =
+              "A nuvem veio vazia; mantive os dados deste aparelho e vou tentar salvar de novo na nuvem. Se isso se repetir, verifique o Supabase (RLS e tabelas).";
+          } else {
+            next = structuredClone(defaultFinanceState);
+            skipCloudSaveRef.current = true;
+          }
+        } else {
+          next = ensureCreditCardAccounts(next);
+          skipCloudSaveRef.current = true;
+        }
+
         cloudReadyRef.current = true;
         setState(next);
-        setSyncStatus("Sincronizado com a sua conta.");
+        setSyncStatus(syncMessage);
       } catch (error) {
         if (!cancelled) {
           cloudReadyRef.current = false;
