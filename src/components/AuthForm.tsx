@@ -19,9 +19,7 @@ export function AuthForm() {
     event.preventDefault();
 
     if (!supabase) {
-      localStorage.setItem("controle-financeiro-local-user", email || "modo-local");
-      router.push("/app");
-      router.refresh();
+      setMessage("Supabase não configurado. Confira as variáveis de ambiente antes de entrar.");
       return;
     }
 
@@ -68,13 +66,6 @@ export function AuthForm() {
         </p>
       </div>
 
-      {!supabase ? (
-        <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Supabase ainda não configurado. Você pode entrar em modo local agora; quando
-          configurar o `.env.local`, o login real na nuvem será ativado.
-        </div>
-      ) : null}
-
       <form className="space-y-4" onSubmit={handleSubmit}>
         <label className="block">
           <span className="text-sm font-medium text-slate-700">E-mail</span>
@@ -114,9 +105,7 @@ export function AuthForm() {
         >
           {isLoading
             ? "Aguarde..."
-            : !supabase
-              ? "Entrar em modo local"
-              : mode === "login"
+            : mode === "login"
                 ? "Entrar"
                 : "Criar conta"}
         </button>
