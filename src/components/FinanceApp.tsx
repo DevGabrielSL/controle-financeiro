@@ -28,7 +28,6 @@ import {
   buildLoanTransactions,
   createId,
   defaultFinanceState,
-  generateRecurringForMonth,
   generateRecurringForMonths,
   getTransactionsForMonth,
   summarizeTransactions,
@@ -90,14 +89,6 @@ export function FinanceApp({ userEmail }: { userEmail?: string }) {
 
   function updateState(nextState: FinanceState) {
     setState(nextState);
-  }
-
-  function generateMonth() {
-    updateState(generateRecurringForMonth(state, month));
-  }
-
-  function generateNext12Months() {
-    updateState(generateRecurringForMonths(state, month, 12));
   }
 
   function deleteTransaction(transactionId: string) {
@@ -189,20 +180,6 @@ export function FinanceApp({ userEmail }: { userEmail?: string }) {
                 value={month}
                 onChange={(event) => setMonth(event.target.value)}
               />
-              <button
-                className="rounded-2xl bg-emerald-400 px-4 py-3 font-semibold text-slate-950"
-                type="button"
-                onClick={generateMonth}
-              >
-                Gerar fixos do mês
-              </button>
-              <button
-                className="rounded-2xl bg-sky-400 px-4 py-3 font-semibold text-slate-950"
-                type="button"
-                onClick={generateNext12Months}
-              >
-                Gerar fixos 12 meses
-              </button>
               <button
                 className="rounded-2xl border border-white/15 px-4 py-3 font-semibold text-white"
                 type="button"
