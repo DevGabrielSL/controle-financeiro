@@ -34,7 +34,7 @@ import {
   getTransactionsForMonth,
   summarizeTransactions,
 } from "@/lib/finance";
-import { FinanceState, TransactionStatus, TransactionType, CardPaymentType } from "@/lib/types";
+import { FinanceState, TransactionType, CardPaymentType } from "@/lib/types";
 import { cn, currentMonth, formatCurrency, formatMonth, toDateInput } from "@/lib/utils";
 import {
   loadCloudFinanceState,
@@ -494,6 +494,16 @@ function TransactionsPanel({
     const form = new FormData(event.currentTarget);
     const type = form.get("type") as TransactionType;
 
+    const mainAccount =
+      state.accounts.find((account) => account.name === "Conta principal") ??
+      state.accounts.find((account) => account.kind === "checking") ??
+      state.accounts[0];
+
+    if (!mainAccount) {
+      window.alert("Não há conta para vincular o lançamento. Cadastre uma conta corrente em Manutenção.");
+      return;
+    }
+
     setState({
       ...state,
       transactions: [
@@ -503,9 +513,9 @@ function TransactionsPanel({
           type,
           amount: Number(form.get("amount")),
           date: String(form.get("date")),
-          status: form.get("status") as TransactionStatus,
+          status: "paid",
           categoryId: String(form.get("categoryId")),
-          accountId: String(form.get("accountId")),
+          accountId: mainAccount.id,
         },
         ...state.transactions,
       ],
@@ -527,7 +537,7 @@ function TransactionsPanel({
   return (
     <Panel
       title="Entradas e saídas"
-      description="Registre tudo que entrou ou saiu, com status pago ou pendente."
+      description="Registre tudo que entrou ou saiu. Lançamentos vão para a conta principal como pagos."
       icon={<Plus />}
     >
       <FinanceForm onSubmit={addTransaction}>
@@ -535,13 +545,7 @@ function TransactionsPanel({
         <Input name="description" label="Descrição" required />
         <Input name="amount" label="Valor" type="number" step="0.01" min="0" required />
         <Input name="date" label="Data" type="date" defaultValue={toDateInput()} required />
-        <Select
-          name="status"
-          label="Status"
-          options={[["paid", "Pago"], ["pending", "Pendente"]]}
-        />
         <CategorySelect state={state} />
-        <AccountSelect state={state} />
         <SubmitButton>Adicionar lançamento</SubmitButton>
       </FinanceForm>
       <TransactionList transactions={state.transactions} onDelete={deleteTransaction} />
