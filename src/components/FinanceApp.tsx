@@ -491,12 +491,12 @@ function Dashboard({
     <div className="space-y-6">
       <RecurringDashboardSection categories={categories} recurringItems={recurringItems} />
 
-      <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
-        <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-6">
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        <div className="min-w-0 rounded-3xl border border-white/10 bg-white/[0.06] p-6">
           <h3 className="text-xl font-bold">Resumo anual</h3>
-          <div className="mt-6 h-80 min-h-80 min-w-0">
+          <div className="mt-6 h-[22rem] w-full min-w-0 sm:h-[26rem] xl:h-[30rem]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
+              <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                 <XAxis dataKey="name" stroke="#cbd5e1" />
                 <YAxis stroke="#cbd5e1" />
@@ -511,12 +511,14 @@ function Dashboard({
           </div>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-6">
+        <div className="min-w-0 rounded-3xl border border-white/10 bg-white/[0.06] p-6">
           <h3 className="text-xl font-bold">Lançamentos do mês</h3>
-          <TransactionList
-            transactions={transactions.slice(0, 8)}
-            onDelete={onDeleteTransaction}
-          />
+          <div className="mt-6">
+            <TransactionList
+              transactions={transactions.slice(0, 8)}
+              onDelete={onDeleteTransaction}
+            />
+          </div>
         </div>
       </div>
 
