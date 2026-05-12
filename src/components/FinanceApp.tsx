@@ -21,6 +21,7 @@ import {
   Repeat,
   Trash2,
   WalletCards,
+  Wrench,
 } from "lucide-react";
 import {
   buildAnnualSummary,
@@ -49,6 +50,7 @@ const tabs = [
   { id: "recurring", label: "Fixos" },
   { id: "installments", label: "Parcelas" },
   { id: "loans", label: "Empréstimos" },
+  { id: "maintenance", label: "Manutenção" },
 ] as const;
 
 type TabId = (typeof tabs)[number]["id"];
@@ -323,6 +325,9 @@ export function FinanceApp({ userEmail }: { userEmail?: string }) {
             <InstallmentsPanel state={state} setState={updateState} />
           ) : null}
           {activeTab === "loans" ? <LoansPanel state={state} setState={updateState} /> : null}
+          {activeTab === "maintenance" ? (
+            <MaintenancePanel state={state} setState={updateState} />
+          ) : null}
         </section>
       </main>
     </div>
@@ -561,6 +566,12 @@ function CardsPanel({
 
   const [cardFilter, setCardFilter] = useState<string>("all");
 
+  useEffect(() => {
+    if (cardFilter !== "all" && !creditCards.some((card) => card.id === cardFilter)) {
+      setCardFilter("all");
+    }
+  }, [cardFilter, creditCards]);
+
   const cardMonthTransactions = useMemo(() => {
     let list = getTransactionsForMonth(state.transactions, month).filter((transaction) =>
       cardAccountIds.has(transaction.accountId),
@@ -619,97 +630,14 @@ function CardsPanel({
     });
   }
 
-  function addCardAccount(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const name = String(form.get("cardName")).trim();
-    if (!name) {
-      return;
-    }
-
-    setState({
-      ...state,
-      accounts: [
-        ...state.accounts,
-        { id: createId("card"), name, kind: "credit_card", balance: 0 },
-      ],
-    });
-    event.currentTarget.reset();
-  }
-
-  function removeCardAccount(accountId: string) {
-    const inUse =
-      state.transactions.some((transaction) => transaction.accountId === accountId) ||
-      state.recurringItems.some((item) => item.accountId === accountId) ||
-      state.installmentPlans.some((plan) => plan.accountId === accountId) ||
-      state.loans.some((loan) => loan.accountId === accountId);
-
-    if (inUse) {
-      window.alert(
-        "Não dá para remover este cartão porque há lançamentos, fixos, parcelas ou empréstimos usando ele.",
-      );
-      return;
-    }
-
-    if (!window.confirm("Remover este cartão da lista?")) {
-      return;
-    }
-
-    setState({
-      ...state,
-      accounts: state.accounts.filter((account) => account.id !== accountId),
-    });
-    if (cardFilter === accountId) {
-      setCardFilter("all");
-    }
-  }
-
   return (
     <Panel
       layout="stack"
       title="Cartões"
-      description="Lançamentos em cartão: crédito ou débito, cartão e categoria. Registrados como saída paga. A lista segue o mês no topo."
+      description="Somente lançamentos com valores (crédito/débito no cartão). Para incluir ou remover cartões, use Manutenção."
       icon={<CreditCard />}
     >
       <div className="min-w-0 space-y-8">
-        <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-5">
-          <h4 className="text-lg font-bold text-white">Meus cartões (banco e titular)</h4>
-          <p className="mt-1 text-sm text-slate-400">
-            Ex.: Santander - Gabriel, Nubank - Maria. O nome aparece no lançamento e no filtro.
-          </p>
-          <form className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end" onSubmit={addCardAccount}>
-            <div className="min-w-0 flex-1">
-              <Input name="cardName" label="Nome do cartão" placeholder="Banco - Titular" required />
-            </div>
-            <button
-              type="submit"
-              className="rounded-2xl bg-white/10 px-5 py-3 font-semibold text-white hover:bg-white/15"
-            >
-              Adicionar cartão
-            </button>
-          </form>
-          <ul className="mt-4 space-y-2">
-            {creditCards.map((card) => (
-              <li
-                key={card.id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3"
-              >
-                <span className="font-medium text-white">{card.name}</span>
-                <button
-                  type="button"
-                  className="text-sm font-semibold text-rose-300 hover:text-rose-200"
-                  onClick={() => removeCardAccount(card.id)}
-                >
-                  Remover
-                </button>
-              </li>
-            ))}
-          </ul>
-          {creditCards.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-500">Nenhum cartão ainda. Adicione acima.</p>
-          ) : null}
-        </div>
-
         {creditCards.length > 0 ? (
           <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
             <FinanceForm onSubmit={addCardTransaction}>
@@ -753,8 +681,114 @@ function CardsPanel({
             </div>
           </div>
         ) : (
-          <EmptyState text="Adicione pelo menos um cartão acima para lançar gastos no crédito ou débito." />
+          <EmptyState text="Não há cartões cadastrados. Abra a aba Manutenção para adicionar contas de cartão de crédito; depois volte aqui para lançar valores." />
         )}
+      </div>
+    </Panel>
+  );
+}
+
+function MaintenancePanel({
+  state,
+  setState,
+}: {
+  state: FinanceState;
+  setState: (state: FinanceState) => void;
+}) {
+  const creditCards = useMemo(
+    () => state.accounts.filter((account) => account.kind === "credit_card"),
+    [state.accounts],
+  );
+
+  function addCardAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("cardName")).trim();
+    if (!name) {
+      return;
+    }
+
+    setState({
+      ...state,
+      accounts: [
+        ...state.accounts,
+        { id: createId("card"), name, kind: "credit_card", balance: 0 },
+      ],
+    });
+    event.currentTarget.reset();
+  }
+
+  function removeCardAccount(accountId: string) {
+    const inUse =
+      state.transactions.some((transaction) => transaction.accountId === accountId) ||
+      state.recurringItems.some((item) => item.accountId === accountId) ||
+      state.installmentPlans.some((plan) => plan.accountId === accountId) ||
+      state.loans.some((loan) => loan.accountId === accountId);
+
+    if (inUse) {
+      window.alert(
+        "Não dá para remover este cartão porque há lançamentos, fixos, parcelas ou empréstimos usando ele.",
+      );
+      return;
+    }
+
+    if (!window.confirm("Remover este cartão da lista?")) {
+      return;
+    }
+
+    setState({
+      ...state,
+      accounts: state.accounts.filter((account) => account.id !== accountId),
+    });
+  }
+
+  return (
+    <Panel
+      layout="stack"
+      title="Manutenção"
+      description="Cadastro e ajustes que não são lançamentos de valores no dia a dia. Por enquanto: cartões de crédito (nome do banco e titular)."
+      icon={<Wrench />}
+    >
+      <div className="min-w-0 space-y-8">
+        <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-5">
+          <h4 className="text-lg font-bold text-white">Cartões de crédito</h4>
+          <p className="mt-1 text-sm text-slate-400">
+            Inclua ou remova cartões (ex.: Santander - Gabriel). Os nomes aparecem na aba Cartões e nos
+            relatórios. Não é possível remover um cartão que ainda tenha lançamentos ou vínculos em fixos,
+            parcelas ou empréstimos.
+          </p>
+          <form className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end" onSubmit={addCardAccount}>
+            <div className="min-w-0 flex-1">
+              <Input name="cardName" label="Nome do cartão" placeholder="Banco - Titular" required />
+            </div>
+            <button
+              type="submit"
+              className="rounded-2xl bg-white/10 px-5 py-3 font-semibold text-white hover:bg-white/15"
+            >
+              Adicionar cartão
+            </button>
+          </form>
+          <ul className="mt-4 space-y-2">
+            {creditCards.map((card) => (
+              <li
+                key={card.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3"
+              >
+                <span className="font-medium text-white">{card.name}</span>
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-rose-300 hover:text-rose-200"
+                  onClick={() => removeCardAccount(card.id)}
+                >
+                  Remover
+                </button>
+              </li>
+            ))}
+          </ul>
+          {creditCards.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-500">Nenhum cartão. Adicione acima.</p>
+          ) : null}
+        </div>
       </div>
     </Panel>
   );

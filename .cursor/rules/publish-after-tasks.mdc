@@ -1,0 +1,17 @@
+---
+description: Sempre publicar alterações no GitHub ao concluir tarefas neste projeto
+alwaysApply: true
+---
+
+# Publicação ao final da tarefa
+
+Ao **concluir** uma tarefa de código ou configuração que alterou este repositório:
+
+1. Rode `git status` e confira o que mudou.
+2. `git add -A` nos arquivos relevantes.
+3. Faça **commit** com mensagem clara em português ou conventional commits (ex.: `feat: …`, `fix: …`).
+4. Faça **`git push origin main`** (ou a branch de trabalho atual) para disparar deploy na Vercel.
+
+**Não encerre a tarefa** só com “vale commitar” ou instruções para o usuário rodar Git: execute você mesmo, salvo se o usuário pedir explicitamente para não publicar ou se não houver remoto/credenciais.
+
+Se o commit falhar no shell (ex.: PowerShell), use `cmd /c` ou outro meio que funcione no ambiente, sem desistir após uma tentativa.
