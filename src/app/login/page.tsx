@@ -2,7 +2,7 @@ import { AuthForm } from "@/components/AuthForm";
 
 export default function LoginPage() {
   return (
-    <main className="min-h-screen overflow-hidden bg-slate-950 px-4 py-8 text-white">
+    <main className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_right,_rgba(16,185,129,0.16),_transparent_34%),#020617] px-4 py-8 text-white">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-6xl flex-col">
         <header>
           <p className="text-sm font-semibold uppercase tracking-[0.35em] text-emerald-300">

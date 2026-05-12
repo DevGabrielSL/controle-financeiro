@@ -53,24 +53,24 @@ export function AuthForm() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-xl shadow-slate-200/70">
+    <div className="mx-auto w-full max-w-md rounded-[2rem] border border-white/10 bg-white/[0.06] p-8 text-white shadow-2xl shadow-emerald-950/40 backdrop-blur">
       <div className="mb-8">
-        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-emerald-600">
+        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-emerald-300">
           Finanças
         </p>
-        <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">
+        <h1 className="mt-3 text-3xl font-bold tracking-tight text-white">
           {mode === "login" ? "Entrar na sua conta" : "Criar sua conta"}
         </h1>
-        <p className="mt-2 text-sm text-slate-600">
+        <p className="mt-2 text-sm text-slate-300">
           Controle entradas, saídas, fixos, parcelas e empréstimos em um só lugar.
         </p>
       </div>
 
       <form className="space-y-4" onSubmit={handleSubmit}>
         <label className="block">
-          <span className="text-sm font-medium text-slate-700">E-mail</span>
+          <span className="text-sm font-medium text-slate-300">E-mail</span>
           <input
-            className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
+            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-300 focus:ring-4 focus:ring-emerald-300/10"
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -80,9 +80,9 @@ export function AuthForm() {
         </label>
 
         <label className="block">
-          <span className="text-sm font-medium text-slate-700">Senha</span>
+          <span className="text-sm font-medium text-slate-300">Senha</span>
           <input
-            className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
+            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-300 focus:ring-4 focus:ring-emerald-300/10"
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
@@ -93,13 +93,13 @@ export function AuthForm() {
         </label>
 
         {message ? (
-          <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
+          <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-slate-200">
             {message}
           </div>
         ) : null}
 
         <button
-          className="w-full rounded-2xl bg-slate-950 px-5 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full rounded-2xl bg-emerald-400 px-5 py-3 font-bold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
           type="submit"
           disabled={isLoading}
         >
@@ -112,7 +112,7 @@ export function AuthForm() {
       </form>
 
       <button
-        className="mt-6 text-sm font-medium text-emerald-700 hover:text-emerald-800"
+        className="mt-6 text-sm font-medium text-emerald-300 hover:text-emerald-200"
         type="button"
         onClick={() => setMode(mode === "login" ? "signup" : "login")}
       >
