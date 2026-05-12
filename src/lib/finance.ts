@@ -12,7 +12,11 @@ const colors = ["#22c55e", "#ef4444", "#f59e0b", "#3b82f6", "#8b5cf6"];
 export const defaultFinanceState: FinanceState = {
   accounts: [
     { id: "acc-main", name: "Conta principal", kind: "checking", balance: 0 },
-    { id: "acc-card", name: "Cartão de crédito", kind: "credit_card", balance: 0 },
+    { id: "acc-card-sant-gab", name: "Santander - Gabriel", kind: "credit_card", balance: 0 },
+    { id: "acc-card-sant-maria", name: "Santander - Maria", kind: "credit_card", balance: 0 },
+    { id: "acc-card-nu-gab", name: "Nubank - Gabriel", kind: "credit_card", balance: 0 },
+    { id: "acc-card-nu-maria", name: "Nubank - Maria", kind: "credit_card", balance: 0 },
+    { id: "acc-card-bb-maria", name: "Banco do Brasil - Maria", kind: "credit_card", balance: 0 },
   ],
   categories: [
     { id: "cat-salary", name: "Salário", type: "income", color: colors[0] },
@@ -26,6 +30,26 @@ export const defaultFinanceState: FinanceState = {
   installmentPlans: [],
   loans: [],
 };
+
+/** Contas de cartão que vêm no estado inicial (Santander, Nubank, BB, etc.). */
+const defaultCreditCardAccounts = defaultFinanceState.accounts.filter(
+  (account) => account.kind === "credit_card",
+);
+
+/**
+ * Garante que exista pelo menos um cartão de crédito na lista de contas.
+ * Dados antigos (nuvem ou localStorage) muitas vezes só tinham "Conta principal",
+ * o que escondia o seletor de banco/cartão na aba Cartões.
+ */
+export function ensureCreditCardAccounts(state: FinanceState): FinanceState {
+  if (state.accounts.some((account) => account.kind === "credit_card")) {
+    return state;
+  }
+  return {
+    ...state,
+    accounts: [...state.accounts, ...defaultCreditCardAccounts.map((account) => ({ ...account }))],
+  };
+}
 
 export function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;

@@ -28,6 +28,7 @@ import {
   buildLoanTransactions,
   createId,
   defaultFinanceState,
+  ensureCreditCardAccounts,
   generateRecurringForMonths,
   getTransactionsForMonth,
   summarizeTransactions,
@@ -52,6 +53,15 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]["id"];
 
+/** Ordem fixa das opções no seletor Cartão da aba Cartões (nomes das contas). */
+const cardPanelOptionNames = [
+  "Santander - Gabriel",
+  "Santander - Maria",
+  "Nubank - Gabriel",
+  "Nubank - Maria",
+  "Banco do Brasil - Maria",
+] as const;
+
 function isCloudDatasetEmpty(cloud: FinanceState) {
   return (
     cloud.accounts.length === 0 &&
@@ -70,7 +80,10 @@ export function FinanceApp({ userEmail }: { userEmail?: string }) {
     }
 
     const saved = localStorage.getItem(storageKey);
-    return saved ? JSON.parse(saved) : defaultFinanceState;
+    if (saved) {
+      return ensureCreditCardAccounts(JSON.parse(saved) as FinanceState);
+    }
+    return defaultFinanceState;
   });
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const [month, setMonth] = useState(currentMonth());
@@ -105,6 +118,8 @@ export function FinanceApp({ userEmail }: { userEmail?: string }) {
         let next = cloudState;
         if (isCloudDatasetEmpty(next)) {
           next = structuredClone(defaultFinanceState);
+        } else {
+          next = ensureCreditCardAccounts(next);
         }
 
         skipCloudSaveRef.current = true;
@@ -160,6 +175,25 @@ export function FinanceApp({ userEmail }: { userEmail?: string }) {
     () => summarizeTransactions(monthlyTransactions, { includePending: true }),
     [monthlyTransactions],
   );
+  const cardSpendByCard = useMemo(() => {
+    const creditCards = state.accounts.filter((account) => account.kind === "credit_card");
+    const cardIds = new Set(creditCards.map((c) => c.id));
+    const totals = new Map<string, number>();
+    for (const transaction of monthlyTransactions) {
+      if (!cardIds.has(transaction.accountId)) {
+        continue;
+      }
+      if (transaction.type !== "expense") {
+        continue;
+      }
+      totals.set(transaction.accountId, (totals.get(transaction.accountId) ?? 0) + transaction.amount);
+    }
+    return creditCards.map((account) => ({
+      id: account.id,
+      name: account.name,
+      total: totals.get(account.id) ?? 0,
+    }));
+  }, [monthlyTransactions, state.accounts]);
   const annualSummary = useMemo(
     () => buildAnnualSummary(state.transactions, Number(month.slice(0, 4))),
     [state.transactions, month],
@@ -271,6 +305,7 @@ export function FinanceApp({ userEmail }: { userEmail?: string }) {
           {activeTab === "dashboard" ? (
             <Dashboard
               annualSummary={annualSummary}
+              cardSpendByCard={cardSpendByCard}
               transactions={monthlyTransactions}
               onDeleteTransaction={deleteTransaction}
             />
@@ -329,10 +364,12 @@ function SummaryCards({
 
 function Dashboard({
   annualSummary,
+  cardSpendByCard,
   onDeleteTransaction,
   transactions,
 }: {
   annualSummary: ReturnType<typeof buildAnnualSummary>;
+  cardSpendByCard: { id: string; name: string; total: number }[];
   onDeleteTransaction: (transactionId: string) => void;
   transactions: FinanceState["transactions"];
 }) {
@@ -342,33 +379,99 @@ function Dashboard({
     Saídas: summary.expense,
   }));
 
+  const cardChartData = [...cardSpendByCard]
+    .filter((row) => row.total > 0)
+    .sort((a, b) => b.total - a.total)
+    .map((row) => ({
+      name: row.name,
+      Gasto: row.total,
+    }));
+
+  const cardChartDataAll = [...cardSpendByCard].sort((a, b) => b.total - a.total).map((row) => ({
+    name: row.name,
+    Gasto: row.total,
+  }));
+
+  const dataForCardChart = cardChartData.length > 0 ? cardChartData : cardChartDataAll;
+  const cardChartHeightPx = Math.min(440, Math.max(200, dataForCardChart.length * 48));
+
   return (
-    <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
-      <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-6">
-        <h3 className="text-xl font-bold">Resumo anual</h3>
-        <div className="mt-6 h-80 min-h-80 min-w-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="name" stroke="#cbd5e1" />
-              <YAxis stroke="#cbd5e1" />
-              <Tooltip
-                formatter={(value) => formatCurrency(Number(value))}
-                contentStyle={{ background: "#0f172a", border: "1px solid #334155" }}
-              />
-              <Bar dataKey="Entradas" fill="#34d399" radius={[8, 8, 0, 0]} />
-              <Bar dataKey="Saídas" fill="#fb7185" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+    <div className="space-y-6">
+      <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
+        <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-6">
+          <h3 className="text-xl font-bold">Resumo anual</h3>
+          <div className="mt-6 h-80 min-h-80 min-w-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="name" stroke="#cbd5e1" />
+                <YAxis stroke="#cbd5e1" />
+                <Tooltip
+                  formatter={(value) => formatCurrency(Number(value))}
+                  contentStyle={{ background: "#0f172a", border: "1px solid #334155" }}
+                />
+                <Bar dataKey="Entradas" fill="#34d399" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="Saídas" fill="#fb7185" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-6">
+          <h3 className="text-xl font-bold">Lançamentos do mês</h3>
+          <TransactionList
+            transactions={transactions.slice(0, 8)}
+            onDelete={onDeleteTransaction}
+          />
         </div>
       </div>
 
       <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-6">
-        <h3 className="text-xl font-bold">Lançamentos do mês</h3>
-        <TransactionList
-          transactions={transactions.slice(0, 8)}
-          onDelete={onDeleteTransaction}
-        />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-xl font-bold">Gastos no cartão por banco</h3>
+            <p className="mt-1 text-sm text-slate-400">
+              Saídas do mês selecionado no topo, somadas por cartão (crédito e débito no cartão). Pendentes e
+              pagos entram na soma.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-2 text-sm text-slate-300">
+            <CreditCard className="text-emerald-300" size={18} />
+            <span>{cardSpendByCard.length} cartões</span>
+          </div>
+        </div>
+        <div className="mt-6 w-full min-h-[200px]" style={{ height: cardChartHeightPx }}>
+          {dataForCardChart.length === 0 ? (
+            <EmptyState text="Nenhum cartão cadastrado ainda." />
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  layout="vertical"
+                  data={dataForCardChart}
+                  margin={{ left: 8, right: 16, top: 8, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    stroke="#cbd5e1"
+                    tickFormatter={(v) => formatCurrency(Number(v))}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={148}
+                    stroke="#cbd5e1"
+                    tick={{ fill: "#e2e8f0", fontSize: 12 }}
+                  />
+                  <Tooltip
+                    formatter={(value) => formatCurrency(Number(value))}
+                    contentStyle={{ background: "#0f172a", border: "1px solid #334155" }}
+                  />
+                  <Bar dataKey="Gasto" fill="#f472b6" radius={[0, 8, 8, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -485,18 +588,16 @@ function CardsPanel({
       return;
     }
 
-    const type = form.get("type") as TransactionType;
-
     setState({
       ...state,
       transactions: [
         {
           id: createId("txn"),
           description: String(form.get("description")),
-          type,
+          type: "expense",
           amount: Number(form.get("amount")),
           date: String(form.get("date")),
-          status: form.get("status") as TransactionStatus,
+          status: "paid",
           categoryId: String(form.get("categoryId")),
           accountId,
           cardPaymentType,
@@ -518,64 +619,142 @@ function CardsPanel({
     });
   }
 
-  if (creditCards.length === 0) {
-    return (
-      <Panel
-        title="Cartões"
-        description="Cadastre uma conta do tipo cartão de crédito nas suas contas para usar esta tela."
-        icon={<CreditCard />}
-      >
-        <EmptyState text="Nenhuma conta de cartão cadastrada. Por enquanto o app traz um cartão de exemplo; restaure os dados ou adicione contas no futuro pelo banco ou por uma tela de contas." />
-      </Panel>
-    );
+  function addCardAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("cardName")).trim();
+    if (!name) {
+      return;
+    }
+
+    setState({
+      ...state,
+      accounts: [
+        ...state.accounts,
+        { id: createId("card"), name, kind: "credit_card", balance: 0 },
+      ],
+    });
+    event.currentTarget.reset();
+  }
+
+  function removeCardAccount(accountId: string) {
+    const inUse =
+      state.transactions.some((transaction) => transaction.accountId === accountId) ||
+      state.recurringItems.some((item) => item.accountId === accountId) ||
+      state.installmentPlans.some((plan) => plan.accountId === accountId) ||
+      state.loans.some((loan) => loan.accountId === accountId);
+
+    if (inUse) {
+      window.alert(
+        "Não dá para remover este cartão porque há lançamentos, fixos, parcelas ou empréstimos usando ele.",
+      );
+      return;
+    }
+
+    if (!window.confirm("Remover este cartão da lista?")) {
+      return;
+    }
+
+    setState({
+      ...state,
+      accounts: state.accounts.filter((account) => account.id !== accountId),
+    });
+    if (cardFilter === accountId) {
+      setCardFilter("all");
+    }
   }
 
   return (
     <Panel
+      layout="stack"
       title="Cartões"
-      description="Lançamentos em cartão: informe se foi no crédito ou no débito e qual cartão. A lista segue o mês selecionado no topo."
+      description="Lançamentos em cartão: crédito ou débito, cartão e categoria. Registrados como saída paga. A lista segue o mês no topo."
       icon={<CreditCard />}
     >
-      <FinanceForm onSubmit={addCardTransaction}>
-        <Select
-          name="cardPaymentType"
-          label="Crédito ou débito"
-          options={[
-            ["credit", "Crédito"],
-            ["debit", "Débito"],
-          ]}
-        />
-        <CardAccountSelect accounts={creditCards} />
-        <Select name="type" label="Tipo" options={[["expense", "Saída"], ["income", "Entrada"]]} />
-        <Input name="description" label="Descrição" required />
-        <Input name="amount" label="Valor" type="number" step="0.01" min="0" required />
-        <Input name="date" label="Data" type="date" defaultValue={toDateInput()} required />
-        <Select name="status" label="Status" options={[["paid", "Pago"], ["pending", "Pendente"]]} />
-        <CategorySelect state={state} />
-        <SubmitButton>Adicionar no cartão</SubmitButton>
-      </FinanceForm>
-      <div className="flex flex-col gap-4">
-        <label className="block">
-          <span className="text-sm font-medium text-slate-300">Filtrar por cartão</span>
-          <select
-            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-emerald-400"
-            value={cardFilter}
-            onChange={(event) => setCardFilter(event.target.value)}
-          >
-            <option value="all">Todos os cartões</option>
+      <div className="min-w-0 space-y-8">
+        <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-5">
+          <h4 className="text-lg font-bold text-white">Meus cartões (banco e titular)</h4>
+          <p className="mt-1 text-sm text-slate-400">
+            Ex.: Santander - Gabriel, Nubank - Maria. O nome aparece no lançamento e no filtro.
+          </p>
+          <form className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end" onSubmit={addCardAccount}>
+            <div className="min-w-0 flex-1">
+              <Input name="cardName" label="Nome do cartão" placeholder="Banco - Titular" required />
+            </div>
+            <button
+              type="submit"
+              className="rounded-2xl bg-white/10 px-5 py-3 font-semibold text-white hover:bg-white/15"
+            >
+              Adicionar cartão
+            </button>
+          </form>
+          <ul className="mt-4 space-y-2">
             {creditCards.map((card) => (
-              <option key={card.id} value={card.id}>
-                {card.name}
-              </option>
+              <li
+                key={card.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3"
+              >
+                <span className="font-medium text-white">{card.name}</span>
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-rose-300 hover:text-rose-200"
+                  onClick={() => removeCardAccount(card.id)}
+                >
+                  Remover
+                </button>
+              </li>
             ))}
-          </select>
-        </label>
-        <TransactionList
-          accounts={state.accounts}
-          onDelete={deleteTransaction}
-          showCardMeta
-          transactions={cardMonthTransactions}
-        />
+          </ul>
+          {creditCards.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-500">Nenhum cartão ainda. Adicione acima.</p>
+          ) : null}
+        </div>
+
+        {creditCards.length > 0 ? (
+          <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+            <FinanceForm onSubmit={addCardTransaction}>
+              <Select
+                name="cardPaymentType"
+                label="Crédito ou débito"
+                options={[
+                  ["credit", "Crédito"],
+                  ["debit", "Débito"],
+                ]}
+              />
+              <CardAccountSelect accounts={creditCards} orderedNames={cardPanelOptionNames} />
+              <Input name="description" label="Descrição" required />
+              <Input name="amount" label="Valor" type="number" step="0.01" min="0" required />
+              <Input name="date" label="Data" type="date" defaultValue={toDateInput()} required />
+              <CategorySelect state={state} type="expense" />
+              <SubmitButton>Adicionar no cartão</SubmitButton>
+            </FinanceForm>
+            <div className="flex flex-col gap-4">
+              <label className="block">
+                <span className="text-sm font-medium text-slate-300">Filtrar por cartão</span>
+                <select
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-emerald-400"
+                  value={cardFilter}
+                  onChange={(event) => setCardFilter(event.target.value)}
+                >
+                  <option value="all">Todos os cartões</option>
+                  {creditCards.map((card) => (
+                    <option key={card.id} value={card.id}>
+                      {card.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <TransactionList
+                accounts={state.accounts}
+                onDelete={deleteTransaction}
+                showCardMeta
+                transactions={cardMonthTransactions}
+              />
+            </div>
+          </div>
+        ) : (
+          <EmptyState text="Adicione pelo menos um cartão acima para lançar gastos no crédito ou débito." />
+        )}
       </div>
     </Panel>
   );
@@ -805,11 +984,14 @@ function Panel({
   description,
   icon,
   children,
+  layout = "split",
 }: {
   title: string;
   description: string;
   icon: React.ReactNode;
   children: React.ReactNode;
+  /** split: duas colunas no XL (formulário + lista). stack: uma coluna (ex.: Cartões). */
+  layout?: "split" | "stack";
 }) {
   return (
     <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-6">
@@ -820,7 +1002,14 @@ function Panel({
           <p className="mt-1 text-sm text-slate-400">{description}</p>
         </div>
       </div>
-      <div className="grid items-start gap-6 xl:grid-cols-[0.9fr_1.1fr]">{children}</div>
+      <div
+        className={cn(
+          "grid items-start gap-6",
+          layout === "split" ? "xl:grid-cols-[0.9fr_1.1fr]" : "grid-cols-1",
+        )}
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -889,8 +1078,41 @@ function AccountSelect({ state }: { state: FinanceState }) {
   return <Select name="accountId" label="Conta" options={state.accounts.map((a) => [a.id, a.name])} />;
 }
 
-function CardAccountSelect({ accounts }: { accounts: FinanceState["accounts"] }) {
-  return <Select name="accountId" label="Cartão" options={accounts.map((account) => [account.id, account.name])} />;
+function CardAccountSelect({
+  accounts,
+  orderedNames,
+}: {
+  accounts: FinanceState["accounts"];
+  orderedNames?: readonly string[];
+}) {
+  let options: [string, string][] = accounts.map((account) => [account.id, account.name]);
+  if (orderedNames?.length) {
+    const ordered = orderedNames
+      .map((name) => {
+        const account = accounts.find((item) => item.name === name);
+        return account ? ([account.id, account.name] as [string, string]) : null;
+      })
+      .filter((row): row is [string, string] => row != null);
+    if (ordered.length > 0) {
+      options = ordered;
+    }
+  }
+
+  if (options.length === 0) {
+    return (
+      <label className="block">
+        <span className="text-sm font-medium text-slate-300">Cartão</span>
+        <select
+          disabled
+          className="mt-2 w-full cursor-not-allowed rounded-2xl border border-white/10 bg-slate-900/50 px-4 py-3 text-slate-500 outline-none"
+          name="accountId"
+        >
+          <option value="">Cadastre um cartão acima</option>
+        </select>
+      </label>
+    );
+  }
+  return <Select name="accountId" label="Cartão" options={options} />;
 }
 
 function SubmitButton({ children }: { children: React.ReactNode }) {
