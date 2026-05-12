@@ -41,7 +41,7 @@ export function AuthForm() {
     setIsLoading(false);
 
     if (error) {
-      setMessage(error.message);
+      setMessage(getAuthErrorMessage(error.message));
       return;
     }
 
@@ -131,4 +131,16 @@ export function AuthForm() {
       </button>
     </div>
   );
+}
+
+function getAuthErrorMessage(errorMessage: string) {
+  if (errorMessage === "Failed to fetch") {
+    return "Não consegui conectar ao Supabase. Confira as variáveis da Vercel e faça um novo deploy.";
+  }
+
+  if (errorMessage.toLowerCase().includes("invalid login credentials")) {
+    return "E-mail ou senha incorretos. Se ainda não cadastrou, clique em 'Ainda não tenho conta'.";
+  }
+
+  return errorMessage;
 }
